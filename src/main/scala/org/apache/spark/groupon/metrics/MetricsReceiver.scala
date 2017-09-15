@@ -43,40 +43,40 @@ import scala.collection.concurrent
 import scala.collection.JavaConverters.mapAsScalaConcurrentMapConverter
 
 /**
- * MetricsReceiver is an [[RpcEndpoint]] on the driver node that collects data points for metrics from all the executors
- * and aggregates them using the Codahale metrics library.
- *
- * This class interacts with Spark's [[org.apache.spark.metrics.MetricsSystem]] class to add the [[Metric]] instances
- * created by this library to Spark's internal [[MetricRegistry]]. When the [[MetricsReceiver]] receives a data point
- * from a [[SparkMetric]] that hasn't been seen before (identified by the `metricName` field in the [[MetricMessage]]),
- * the [[MetricsReceiver]] creates an instance of a Codahale [[Metric]] that corresponds with the [[SparkMetric]].
- *
- * This new instance is then added to Spark's internal [[MetricRegistry]] via the
- * [[org.apache.spark.metrics.MetricsSystem.registerSource()]] method. This is the only available API to add a new
- * [[Metric]], but to add a [[org.apache.spark.metrics.source.Source]], we need to create a [[MetricRegistry]] as well.
- * In other words, to add a new [[Metric]] to the Spark [[org.apache.spark.metrics.MetricsSystem]], we need to wrap a
- * [[Metric]] in a [[MetricRegistry]], which is in turn wrapped by a [[org.apache.spark.metrics.source.Source]].
- *
- * The ideal implementation would be that the [[MetricsReceiver]] class has a single corresponding
- * [[org.apache.spark.metrics.source.Source]] instance that contains a [[MetricRegistry]] which holds all the [[Metric]]
- * instances created in the [[MetricsReceiver]]. Then, we could just register this one
- * [[org.apache.spark.metrics.source.Source]] with Spark, and all of this library's [[Metric]] instances will be
- * integrated with Spark.
- *
- * Unfortunately, this isn't possible due to the fact that Spark's internal [[MetricRegistry]] doesn't listen for
- * updates to external [[MetricRegistry]] instances that were added in the
- * [[org.apache.spark.metrics.MetricsSystem.registerSource()]] call. That method registers whatever [[Metric]] instances
- * are in the [[MetricRegistry]] of the [[org.apache.spark.metrics.source.Source]] at that time, but any future updates
- * to that [[MetricRegistry]] won't get propagated to Spark's internal [[MetricRegistry]].
- *
- * We could add a [[com.codahale.metrics.MetricRegistryListener]] to this library's [[MetricRegistry]], and whenever
- * there is an update to that, we could propagate these changes to Spark's [[MetricRegistry]]. This would be possible
- * if we had access to Spark's [[MetricRegistry]], but this is currently a private field in the
- * [[org.apache.spark.metrics.MetricsSystem]].
- *
- * @param sparkContext app's [[SparkContext]]
- * @param metricNamespace namespace of metrics used for publishing.
- */
+  * MetricsReceiver is an [[RpcEndpoint]] on the driver node that collects data points for metrics from all the executors
+  * and aggregates them using the Codahale metrics library.
+  *
+  * This class interacts with Spark's [[org.apache.spark.metrics.MetricsSystem]] class to add the [[Metric]] instances
+  * created by this library to Spark's internal [[MetricRegistry]]. When the [[MetricsReceiver]] receives a data point
+  * from a [[SparkMetric]] that hasn't been seen before (identified by the `metricName` field in the [[MetricMessage]]),
+  * the [[MetricsReceiver]] creates an instance of a Codahale [[Metric]] that corresponds with the [[SparkMetric]].
+  *
+  * This new instance is then added to Spark's internal [[MetricRegistry]] via the
+  * [[org.apache.spark.metrics.MetricsSystem.registerSource()]] method. This is the only available API to add a new
+  * [[Metric]], but to add a [[org.apache.spark.metrics.source.Source]], we need to create a [[MetricRegistry]] as well.
+  * In other words, to add a new [[Metric]] to the Spark [[org.apache.spark.metrics.MetricsSystem]], we need to wrap a
+  * [[Metric]] in a [[MetricRegistry]], which is in turn wrapped by a [[org.apache.spark.metrics.source.Source]].
+  *
+  * The ideal implementation would be that the [[MetricsReceiver]] class has a single corresponding
+  * [[org.apache.spark.metrics.source.Source]] instance that contains a [[MetricRegistry]] which holds all the [[Metric]]
+  * instances created in the [[MetricsReceiver]]. Then, we could just register this one
+  * [[org.apache.spark.metrics.source.Source]] with Spark, and all of this library's [[Metric]] instances will be
+  * integrated with Spark.
+  *
+  * Unfortunately, this isn't possible due to the fact that Spark's internal [[MetricRegistry]] doesn't listen for
+  * updates to external [[MetricRegistry]] instances that were added in the
+  * [[org.apache.spark.metrics.MetricsSystem.registerSource()]] call. That method registers whatever [[Metric]] instances
+  * are in the [[MetricRegistry]] of the [[org.apache.spark.metrics.source.Source]] at that time, but any future updates
+  * to that [[MetricRegistry]] won't get propagated to Spark's internal [[MetricRegistry]].
+  *
+  * We could add a [[com.codahale.metrics.MetricRegistryListener]] to this library's [[MetricRegistry]], and whenever
+  * there is an update to that, we could propagate these changes to Spark's [[MetricRegistry]]. This would be possible
+  * if we had access to Spark's [[MetricRegistry]], but this is currently a private field in the
+  * [[org.apache.spark.metrics.MetricsSystem]].
+  *
+  * @param sparkContext app's [[SparkContext]]
+  * @param metricNamespace namespace of metrics used for publishing.
+  */
 private[metrics] class MetricsReceiver(val sparkContext: SparkContext,
                                        val metricNamespace: String) extends RpcEndpoint {
   override val rpcEnv = sparkContext.env.rpcEnv
@@ -87,11 +87,11 @@ private[metrics] class MetricsReceiver(val sparkContext: SparkContext,
   val metrics: concurrent.Map[String, Metric] = new ConcurrentHashMap[String, Metric]().asScala
 
   /**
-   * Handle the data points pushed from the executors.
-   *
-   * Performs the appropriate update operations on the [[Metric]] instances. If a `metricName` is seen for the first
-   * time, a [[Metric]] instance is created using the data from the [[MetricMessage]].
-   */
+    * Handle the data points pushed from the executors.
+    *
+    * Performs the appropriate update operations on the [[Metric]] instances. If a `metricName` is seen for the first
+    * time, a [[Metric]] instance is created using the data from the [[MetricMessage]].
+    */
   override def receive: PartialFunction[Any, Unit] = {
     case CounterMessage(metricName, value) => {
       getOrCreateCounter(metricName).inc(value)
@@ -113,59 +113,64 @@ private[metrics] class MetricsReceiver(val sparkContext: SparkContext,
   }
 
   def getOrCreateCounter(metricName: String): Counter = {
-    metrics.getOrElseUpdate(metricName, {
+    metrics.get(metricName).getOrElse{
       val counter = new Counter()
+      val maybe: Option[Metric] = metrics.putIfAbsent(metricName, counter)
       registerMetricSource(metricName, counter)
-      counter
-    }).asInstanceOf[Counter]
+      maybe.getOrElse(counter)
+    }.asInstanceOf[Counter]
   }
 
   def getOrCreateHistogram(metricName: String, reservoirClass: Class[_ <: Reservoir]): Histogram = {
-    metrics.getOrElseUpdate(metricName, {
+    metrics.get(metricName).getOrElse{
       val histogram = new Histogram(reservoirClass.newInstance())
+      val maybe: Option[Metric] = metrics.putIfAbsent(metricName, histogram)
       registerMetricSource(metricName, histogram)
-      histogram
-    }).asInstanceOf[Histogram]
+      maybe.getOrElse(histogram)
+    }.asInstanceOf[Histogram]
   }
 
   def getOrCreateMeter(metricName: String): Meter = {
-    metrics.getOrElseUpdate(metricName, {
+    metrics.get(metricName).getOrElse{
       val meter = new Meter()
+      val maybe: Option[Metric] = metrics.putIfAbsent(metricName, meter)
       registerMetricSource(metricName, meter)
-      meter
-    }).asInstanceOf[Meter]
+      maybe.getOrElse(meter)
+    }.asInstanceOf[Meter]
   }
 
   def getOrCreateTimer(metricName: String, reservoirClass: Class[_ <: Reservoir], clockClass: Class[_ <: Clock]): Timer = {
-    metrics.getOrElseUpdate(metricName, {
+    metrics.get(metricName).getOrElse{
       val timer = new Timer(reservoirClass.newInstance(), clockClass.newInstance())
+      val maybe: Option[Metric] = metrics.putIfAbsent(metricName, timer)
       registerMetricSource(metricName, timer)
-      timer
-    }).asInstanceOf[Timer]
+      maybe.getOrElse(timer)
+    }.asInstanceOf[Timer]
   }
 
   def getOrCreateGauge(metricName: String): Gauge[AnyVal] = {
-    metrics.getOrElseUpdate(metricName, {
+    metrics.get(metricName).getOrElse{
       val gauge = new Gauge[AnyVal] {
         override def getValue: AnyVal = {
           lastGaugeValues.get(metricName).get
         }
       }
+      val maybe: Option[Metric] = metrics.putIfAbsent(metricName, gauge)
       registerMetricSource(metricName, gauge)
-      gauge
-    }).asInstanceOf[Gauge[AnyVal]]
+      maybe.getOrElse(gauge)
+    }.asInstanceOf[Gauge[AnyVal]]
   }
 
   /**
-   * Register a [[Metric]] with Spark's [[org.apache.spark.metrics.MetricsSystem]].
-   *
-   * Since updates to an external [[MetricRegistry]] that is already registered with the
-   * [[org.apache.spark.metrics.MetricsSystem]] aren't propagated to Spark's internal [[MetricRegistry]] instance, a new
-   * [[MetricRegistry]] must be created for each new [[Metric]] that needs to be published.
-   *
-   * @param metricName name of the Metric
-   * @param metric [[Metric]] instance to be published
-   */
+    * Register a [[Metric]] with Spark's [[org.apache.spark.metrics.MetricsSystem]].
+    *
+    * Since updates to an external [[MetricRegistry]] that is already registered with the
+    * [[org.apache.spark.metrics.MetricsSystem]] aren't propagated to Spark's internal [[MetricRegistry]] instance, a new
+    * [[MetricRegistry]] must be created for each new [[Metric]] that needs to be published.
+    *
+    * @param metricName name of the Metric
+    * @param metric [[Metric]] instance to be published
+    */
   def registerMetricSource(metricName: String, metric: Metric): Unit =  {
     sparkContext.env.metricsSystem.registerSource(
       new Source {
